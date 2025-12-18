@@ -4,7 +4,7 @@ Este repositorio contiene los códigos usados en la metodología de mi tesis *An
 
 ## Qué hay en este repo:
 
--**`bandas3.py`**  
+- **`bandas3.py`**  
 Codigo en Python + Google Earth Engine: construye un stack grande de features (índices espectrales, compuestos térmicos, métricas/morfología, texturas GLCM, etc.), segmenta con SNIC, calcula estadísticas por objeto, y entrena/valida Random Forest con un random search de subconjuntos de bandas para encontrar combinaciones que maximizan métricas (accuracy/kappa), guardando resultados en CSV.
 
  - **`OBIA1.2.py`**  
