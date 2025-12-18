@@ -22,8 +22,8 @@ Codigo en Python + Google Earth Engine: construye un stack grande de features (�
   - **DEM**: muestrea elevación por punto desde **NASADEM** y **Copernicus GLO30**, exportando CSVs.
   - **Clima**: extrae variables diarias desde **ERA5-LAND** y los guarda en un excel.
 
-- **'Datos_Litologia-checkpoint.ipynb`**
-  Implementa SAM (Spectral Angle Mapper) en GEE con un catálogo de minerales/firma espectral, extraido de la USGS. Clasifica escenas de Sentinel-2, aplica umbrales de confianza, remapea a clases de litología (p. ej., Skarn/Intrusiva/Caliza/Indeterminada), hace *sampling* en la malla/puntos (`numero`, `X`, `Y`) y exporta CSV consolidado con `fecha_img`, `litologia`, `mineral'.
+- 'Datos_Litologia-checkpoint.ipynb'
+Implementa SAM (Spectral Angle Mapper) en GEE con un catálogo de minerales/firma espectral, extraido de la USGS. Clasifica escenas de Sentinel-2, aplica umbrales de confianza, remapea a clases de litología (p. ej., Skarn/Intrusiva/Caliza/Indeterminada), hace sampling en la malla/puntos (`numero`, `X`, `Y`) y exporta CSV consolidado con `fecha_img`, `litologia`, `mineral'.
 
 - `Merge_CSV-checkpoint.ipynb`  
   Notebook de integración final: une los CSV de bandas (S2/L8/L9) en un solo dataset normalizando `punto_id` y `fecha`, luego integra el CSV de cambios Sentinel-1, agrega clima (Excel ERA5-LAND), une coordenadas + elevación (DEM) y finalmente incorpora litología/mineral (SAM). 
