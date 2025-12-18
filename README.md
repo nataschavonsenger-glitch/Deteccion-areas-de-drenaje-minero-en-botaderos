@@ -3,12 +3,12 @@
 Este repositorio contiene los códigos usados en la metodología de mi tesis *Análisis multitemporal de patrones de generación de drenaje minero en botaderos de estéril* para priorizar zonas en botaderos con mayor probabilidad de oxidación de sulfuros, integrando índices multiespectrales, temperatura superficial y litología.
 
 ## Qué hay en este repo
-- `botaderosdetec.py`: Pipeline en Python + Google Earth Engine para:
+- `botaderosdetec.py`: Python + Google Earth Engine para:
   - entrenar un Random Forest con polígonos etiquetados,
   - clasificar escenas,
   - calcular áreas por clase,
   - exportar visualizaciones (PNG).
-- `bandas3.py`: Variante enfocada en OBIA (SNIC) + texturas GLCM** y búsqueda aleatoria de subconjuntos de bandas, guardando resultados en CSV.
+- `bandas3.py`: Búsqueda aleatoria de subconjuntos de bandas, guardando resultados en CSV.
 
 
 ## Requisitos
