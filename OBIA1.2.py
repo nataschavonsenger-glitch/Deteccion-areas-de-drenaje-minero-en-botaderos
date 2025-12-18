@@ -16,14 +16,12 @@ from selenium.webdriver.support import expected_conditions as EC
 from ee import EEException
 ee.Initialize()
 
-#  PARÁMETROS
-
 _PALETTE = [
-    "#FF0000",  # Botadero (rojo)
-    "#FFFF00",  # Relave   (amarillo)
-    "#00FF00",  # Rajo     (verde)
-    "#0000FF",  # Agua     (azul)
-    "#8000FF"   # Área mina (morado)
+    "#FF0000",  # Botadero
+    "#FFFF00",  # Relave  
+    "#00FF00",  # Rajo    
+    "#0000FF",  # Agua    
+    "#8000FF"   # Area mina 
 ]
 _VIS_RGB = {"bands": ["SR_B4", "SR_B3", "SR_B2"], "min": 0.03, "max": 0.35, "gamma": 1.5}
 RF_PARAMS = {
@@ -232,11 +230,6 @@ def hierarchical_classify(
     bands: List[str],
     water_thr: float = 0.2
 ) -> ee.Image:
-    """
-    1) Detecta agua con NDWI > thr
-    2) Clasifica resto con RF
-    3) Combina ambos resultados (4 = agua)
-    """
     water_mask = mask_water(img, water_thr)
     water_cls  = water_mask.multiply(4).rename('classification')
     non_water  = img.updateMask(water_mask.Not())
@@ -389,7 +382,6 @@ def export_png(
     })
     outfile  = os.path.join(out_dir, f"{img_id}_{prefix}.png")
     
-    # 1) Intentos con requests
     for attempt in range(1, max_http_retries+1):
         try:
             with requests.get(url, stream=True, timeout=(30, 300)) as r:
@@ -424,7 +416,6 @@ def export_png(
     except Exception as e:
         print(f"Fallback Selenium also failed: {e}")
         
-        
 def classify_train_ids(
     train_ids: List[str],
     clf: ee.Classifier,
@@ -453,13 +444,11 @@ def classify_train_ids(
             maxPixels     = max_pixels
         )
         task.start()
-
         raw_polys    = classification_to_polygons(cls, roi)
         merged_polys = merge_polys(raw_polys, buf_m=200)
         asset_path   = f'projects/ee-proyecto/{prefix}_{tid}'
         export_asset(merged_polys, asset_id=asset_path, desc=f'{prefix}_{tid}_asset')
-        
-        # —— PNG local (control rápido) ——
+    
         rgb = img.visualize(**_VIS_RGB).clip(roi)
         vis = cls.visualize(min=1, max=5, palette=_PALETTE, opacity=0.4).clip(roi)
         export_png(rgb.blend(vis), tid, roi, export_dir, prefix='cls')
@@ -517,11 +506,6 @@ def classify_collection(
         export_img(img)         
                     
 def export_asset(fc: ee.FeatureCollection, asset_id: str, desc: str):
-    """
-    Exporta FeatureCollection como Asset.
-    asset_id  → ruta completa: 'users/…/…'
-    desc      → descripción visible en la cola de tareas
-    """
     task = ee.batch.Export.table.toAsset(
         collection = fc,
         description= desc,
@@ -533,8 +517,6 @@ def main():
     out_dir_png = r"C:\Users\Natascha\Desktop\Tesis\pantallazos"
     os.makedirs(out_dir_png, exist_ok=True)
 
-    # 1) Cargar y etiquetar polígonos
-    print(">>> 1) Cargando y etiquetando polígonos…")
     fc2023 = ee.FeatureCollection("projects/proyecto/assets/2023").map(_add_label)
     fc2017 = ee.FeatureCollection("projects/proyecto/assets/2017").map(_add_label)
     fc2014 = ee.FeatureCollection("projects/eproyecto/assets/20144").map(_add_label) 
@@ -548,7 +530,6 @@ def main():
     try:
         clf, bands = train_rf_objects(polygons, unique_ids)
 
-    # 4) Clasificar SOLO las imágenes de entrenamiento
     classify_train_ids(
         train_ids = unique_ids,
         clf       = clf,
@@ -563,3 +544,4 @@ if __name__ == '__main__':
     ee.Initialize()
 
     main()
+
