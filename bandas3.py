@@ -8,11 +8,8 @@ import  time, random, json
 import csv
 ee.Initialize()
 
+#  PARÁMETROS
 
-
-# --------------------------------------------------------------
-# 0. PARÁMETROS
-# --------------------------------------------------------------
 _PALETTE = [
     "#FF0000",  # Botadero (rojo)
     "#FFFF00",  # Relave   (amarillo)
@@ -21,8 +18,6 @@ _PALETTE = [
     "#8000FF"   # Área mina (morado)
 ]
 _VIS_RGB = {"bands": ["SR_B4", "SR_B3", "SR_B2"], "min": 0.03, "max": 0.35, "gamma": 1.5}
-
-
 RF_PARAMS = {
     "numberOfTrees": 100,
     "bagFraction": 0.8,
@@ -30,23 +25,19 @@ RF_PARAMS = {
     "maxNodes": 50,
     "seed": 42
 }
-
 SAMPLE_PARAMS = {
     "max_train": 2000,
     "max_test": 500,
     "split": 0.7
 }
-
-
 TRAIN_IDS = [
     "LC08_008067_20170618",
     "LC08_008067_20230705",
     "LC08_008067_20140101",
 ]
 
-# --------------------------------------------------------------
-# 1. ETIQUETADO DE POLÍGONOS
-# --------------------------------------------------------------
+#  ETIQUETADO DE POLIGONOS
+
 def _add_label(feat: ee.Feature) -> ee.Feature:
     name = ee.String(
         ee.Algorithms.If(feat.propertyNames().contains("Name"), feat.get("Name"), "")
@@ -61,16 +52,9 @@ def _add_label(feat: ee.Feature) -> ee.Feature:
     )
     return feat.set("etiqueta", etiqueta)
 
+#  COMPOSITE MULTITEMPORAL 
 
-
-# --------------------------------------------------------------
-# 2. COMPOSITE MULTITEMPORAL 
-# --------------------------------------------------------------
 def get_composite(img_id: str, buffer_days: int = 3, maxCloud: int = 30, roi: ee.Geometry = None) -> ee.Image:
-    """
-    Crea un composite median de ±buffer_days autour de img_id para reducir nubes.
-    """
-    # Extraer fecha de img_id
     img = ee.Image(f"LANDSAT/LC08/C02/T1_L2/{img_id}")
     date = ee.Date(img.get('system:time_start'))
     start = date.advance(-buffer_days, 'day')
@@ -86,8 +70,6 @@ def get_composite(img_id: str, buffer_days: int = 3, maxCloud: int = 30, roi: ee
     return col.median().set('system:time_start', date.millis())
 
 def compute_metrics(matrix, retries=5, wait=20):
-
-    # Creamos un diccionario con las dos métricas
     metrics = ee.Dictionary({
         'acc':   matrix.accuracy().multiply(100),
         'kappa': matrix.kappa()
@@ -104,21 +86,14 @@ def compute_metrics(matrix, retries=5, wait=20):
                 raise
     raise RuntimeError("No se pudieron calcular métricas tras varios reintentos.")
 
-# --------------------------------------------------------------
-# 2. BANDAS E ÍNDICES
-# --------------------------------------------------------------
+#  BANDAS E INDICES
+
 def _add_indices(img: ee.Image) -> ee.Image:
-    # --------------------------------------------------------------
-    # 0) Bandas base
-    # --------------------------------------------------------------
     blue, green, red = img.select('SR_B2'), img.select('SR_B3'), img.select('SR_B4')
     nir, swir1, swir2 = img.select('SR_B5'), img.select('SR_B6'), img.select('SR_B7')
     tir = img.select('ST_B10')
     eps = ee.Number(1e-6)
-
-    # --------------------------------------------------------------
-    # 1) Índices espectrales
-    # --------------------------------------------------------------
+    
     ndvi    = img.normalizedDifference(['SR_B5', 'SR_B4']).rename('NDVI')
     savi    = img.expression('((NIR-RED)*(1+L))/(NIR+RED+L)', 
                {'NIR': nir, 'RED': red, 'L': 0.5}).rename('SAVI')
@@ -130,10 +105,6 @@ def _add_indices(img: ee.Image) -> ee.Image:
     ndbi    = img.normalizedDifference(['SR_B6', 'SR_B5']).rename('NDBI')
     nbr     = img.normalizedDifference(['SR_B5', 'SR_B7']).rename('NBR')
     nbr2    = img.normalizedDifference(['SR_B6', 'SR_B7']).rename('NBR2')
-
-    # --------------------------------------------------------------
-    # 2) Geoquímicos / suelo fino
-    # --------------------------------------------------------------
     clay_ratio = swir1.divide(swir2.add(eps)).rename('Clay_Ratio')
     fe_oxide   = red.divide(blue.add(eps)).rename('Fe_Oxide_Index')
     fe_comp    = red.add(swir1).divide(nir.add(eps)).rename('Fe_Composite_Index')
@@ -147,10 +118,6 @@ def _add_indices(img: ee.Image) -> ee.Image:
                    {'G': green, 'R': red, 'B': blue}).rename('VARI')
     vnsir      = red.add(green).add(blue).divide(swir1.add(swir2).add(eps)).rename('VNSIR')
     gndvi      = img.normalizedDifference(['SR_B5', 'SR_B3']).rename('GNDVI')
-
-    # --------------------------------------------------------------
-    # 3) Térmico / topográfico / compuestos
-    # --------------------------------------------------------------
     bt           = tir.multiply(0.055).add(149).rename('BT')
     shadow_index = blue.add(green).divide(nir.add(eps)).rename('Shadow_Index')
     si_therm     = shadow_index.multiply(tir).rename('SI_Thermal')
@@ -165,25 +132,14 @@ def _add_indices(img: ee.Image) -> ee.Image:
     tci          = img.expression('0.1511*B2 + 0.1973*B3 + 0.3283*B4 + 0.3407*B5 - 0.7117*B6 - 0.4559*B7',
                    {'B2': blue,'B3': green,'B4': red,'B5': nir,'B6': swir1,'B7': swir2}).rename('TCI')
 
-    # --------------------------------------------------------------
-    # 4) Texturas espectrales 5×5
-    # --------------------------------------------------------------
     kern      = ee.Kernel.square(2)
     ndvi_std  = ndvi.reduceNeighborhood(ee.Reducer.stdDev(), kern).rename('NDVI_stddev_5x5')
     ndvi_mean = ndvi.reduceNeighborhood(ee.Reducer.mean(),   kern).rename('NDVI_mean_5x5')
     ndwi_med  = ndwi.reduceNeighborhood(ee.Reducer.median(), kern).rename('NDWI_med_5x5')
-
-    # --------------------------------------------------------------
-    # 5) Morfología granulométrica
-    # --------------------------------------------------------------
     open3  = swir1.focal_min(3, 'circle', 'pixels').focal_max(3, 'circle', 'pixels').rename('Open_3')
     close3 = swir1.focal_max(3, 'circle', 'pixels').focal_min(3, 'circle', 'pixels').rename('Close_3')
     gran7  = swir1.focal_max(7, 'circle', 'pixels') \
                 .subtract(swir1.focal_min(7, 'circle', 'pixels')).rename('Granulo_7')
-
-    # --------------------------------------------------------------
-    # 6) Texturas GLCM
-    # --------------------------------------------------------------
     def glcm_stats(band_u, name):
         stats = []
         for w in [3, 5, 7]:
@@ -197,14 +153,9 @@ def _add_indices(img: ee.Image) -> ee.Image:
                 g.select(f'{name}_corr')    .rename(f'GLCM_{name}_corr_{w}'),
             ]
         return stats
-
     b5_u = nir.multiply(100).toUint8()
     b6_u = swir1.multiply(100).toUint8()
     b7_u = swir2.multiply(100).toUint8()
-
-    # --------------------------------------------------------------
-    # 7) Ensamblar todas las bandas
-    # --------------------------------------------------------------
     all_bands = [
         # índices espectrales
         ndvi, savi, evi, ndwi, mndwi, ndmi, ndbi, nbr, nbr2,
@@ -220,10 +171,8 @@ def _add_indices(img: ee.Image) -> ee.Image:
     glcm_stats(b5_u, 'SR_B5') + \
     glcm_stats(b6_u, 'SR_B6') + \
     glcm_stats(b7_u, 'SR_B7')
-
+    
     return img.addBands(all_bands)
-
-
 
 def segment_snic(img: ee.Image, size=30, compact=1):
     seeds   = ee.Algorithms.Image.Segmentation.seedGrid(size)
@@ -240,19 +189,13 @@ def segment_stats(img: ee.Image, labels: ee.Image, bands: List[str]) -> ee.Image
         labelBand = 'label'                    
     )
 
-
-# --------------------------------------------------------------
-# 4. CARGA Y ESCALA
-# --------------------------------------------------------------
+#  CARGA Y ESCALA
 def apply_scale_factors_l8(image: ee.Image) -> ee.Image:
     optical = image.select('SR_B.').multiply(0.0000275).add(-0.2)
     thermal = image.select('ST_B.*').multiply(0.00341802).add(149.0)
     return image.addBands(optical, overwrite=True).addBands(thermal, overwrite=True)
 
-# --------------------------------------------------------------
-# 5. ENTRENAMIENTO RF
-# --------------------------------------------------------------
-
+# ENTRENAMIENTO RF
 def safe_get_info(obj, retries=1, wait=1):
     for _ in range(retries):
         try: return obj.getInfo()
@@ -274,7 +217,6 @@ def safe_sample(image, collection, props, scale, tile_scale=2, max_retries=5):
             )
         except EEException as e:
             if '429' in str(e) or 'Too many concurrent aggregations' in str(e):
-                print(f"⚠️ safe_sample: intento {attempt+1}/{max_retries} fallido. Reintentando en {wait}s…")
                 time.sleep(wait)
                 wait *= 2
             else:
@@ -292,40 +234,23 @@ def train_rf_random_search(
 ) -> List[str]:
     # 1) Lista completa de bandas candidatas
     all_bands =rf_bands = [
-    # Índices espectrales básicos
     "NDVI", "SAVI", "EVI", "NDWI", "MNDWI", "NDMI", "NDBI", "NBR", "NBR2",
-
-    # Geoquímicos / suelo fino
     "Clay_Ratio", "Fe_Oxide_Index", "Fe_Composite_Index", "EMI", "MBSI",
     "BSI", "PSRI", "VARI", "VNSIR", "GNDVI",
-
-    # Térmico / topo / compuestos
     "BT", "Shadow_Index", "SI_Thermal", "NBLI", "TNDI", "TNR", "ARI",
     "TCB", "TCG", "TCI",
-
-    # Texturas espectrales 5×5
     "NDVI_stddev_5x5", "NDVI_mean_5x5", "NDWI_med_5x5",
-
-    # Morfología granulométrica (sólo si las tienes definidas)
     "Open_3", "Close_3", "Granulo_7",  
-
-    # GLCM SR_B5 (ventanas 3, 5, 7)
     "GLCM_SR_B5_contrast_3", "GLCM_SR_B5_var_3", "GLCM_SR_B5_idm_3", "GLCM_SR_B5_ent_3", "GLCM_SR_B5_diss_3", "GLCM_SR_B5_corr_3",
     "GLCM_SR_B5_contrast_5", "GLCM_SR_B5_var_5", "GLCM_SR_B5_idm_5", "GLCM_SR_B5_ent_5", "GLCM_SR_B5_diss_5", "GLCM_SR_B5_corr_5",
     "GLCM_SR_B5_contrast_7", "GLCM_SR_B5_var_7", "GLCM_SR_B5_idm_7", "GLCM_SR_B5_ent_7", "GLCM_SR_B5_diss_7", "GLCM_SR_B5_corr_7",
-
-    # GLCM SR_B6 (ventanas 3, 5, 7)
     "GLCM_SR_B6_contrast_3", "GLCM_SR_B6_var_3", "GLCM_SR_B6_idm_3", "GLCM_SR_B6_ent_3", "GLCM_SR_B6_diss_3", "GLCM_SR_B6_corr_3",
     "GLCM_SR_B6_contrast_5", "GLCM_SR_B6_var_5", "GLCM_SR_B6_idm_5", "GLCM_SR_B6_ent_5", "GLCM_SR_B6_diss_5", "GLCM_SR_B6_corr_5",
     "GLCM_SR_B6_contrast_7", "GLCM_SR_B6_var_7", "GLCM_SR_B6_idm_7", "GLCM_SR_B6_ent_7", "GLCM_SR_B6_diss_7", "GLCM_SR_B6_corr_7",
-
-    # GLCM SR_B7 (ventanas 3, 5, 7)
     "GLCM_SR_B7_contrast_3", "GLCM_SR_B7_var_3", "GLCM_SR_B7_idm_3", "GLCM_SR_B7_ent_3", "GLCM_SR_B7_diss_3", "GLCM_SR_B7_corr_3",
     "GLCM_SR_B7_contrast_5", "GLCM_SR_B7_var_5", "GLCM_SR_B7_idm_5", "GLCM_SR_B7_ent_5", "GLCM_SR_B7_diss_5", "GLCM_SR_B7_corr_5",
     "GLCM_SR_B7_contrast_7", "GLCM_SR_B7_var_7", "GLCM_SR_B7_idm_7", "GLCM_SR_B7_ent_7", "GLCM_SR_B7_diss_7", "GLCM_SR_B7_corr_7",
 ]
-
-    # 2) Muestreo estratificado único (train / test_full)
     classes   = [1, 2, 3, 4, 5]
     per_class = SAMPLE_PARAMS["max_train"] // len(classes)
     samples   = ee.FeatureCollection([])
@@ -344,10 +269,9 @@ def train_rf_random_search(
                 tile_scale   = 16
             ).randomColumn("rnd", RF_PARAMS["seed"]) \
              .limit(per_class, "rnd")
-
+            
             samples = samples.merge(fc)
 
-    # 3) Split train / test_full
     samples   = samples.randomColumn("rnd", RF_PARAMS["seed"])
     train     = samples.filter(ee.Filter.lt("rnd", SAMPLE_PARAMS["split"]))
     test_full = samples.filter(ee.Filter.gte("rnd", SAMPLE_PARAMS["split"]))
@@ -368,18 +292,14 @@ def train_rf_random_search(
             subset_size = random.randint(min_bands, max_bands)
             subset = random.sample(all_bands, subset_size)
             print(f"\n▶️ Trial {i}/{n_trials} — size={subset_size}, bandas={subset}")
-
             try:
                 # Entrena RF
                 clf = ee.Classifier.smileRandomForest(**RF_PARAMS) \
                          .train(train, "etiqueta", subset)
-
-                # Acumula todos los puntos de validación en una sola colección
                 pts_all_total = ee.FeatureCollection([])
                 for tid in img_ids:
                     img_full   = get_composite(tid, roi=polygons.geometry())
                     class_full = img_full.classify(clf)
-
                     for c in [1,2,3,4,5]:
                         pts = class_full.stratifiedSample(
                             numPoints  = SAMPLE_PARAMS["max_test"],
@@ -390,13 +310,10 @@ def train_rf_random_search(
                             geometries = False
                         ).map(lambda f: f.set('etiqueta', c))
                         pts_all_total = pts_all_total.merge(pts)
-
-                # Una sola matriz de error
+                        
                 matrix_total = pts_all_total.errorMatrix('etiqueta','classification')
                 acc_total, kappa_total = compute_metrics(matrix_total)
                 print(f"  • Total: Acc={acc_total:.2f}%  κ={kappa_total:.3f}")
-
-                # Guarda en CSV
                 writer.writerow([
                     i,
                     subset_size,
@@ -404,28 +321,19 @@ def train_rf_random_search(
                     f"{acc_total:.2f}",
                     f"{kappa_total:.3f}"
                 ])
-
-                # Actualiza mejor según kappa_total
                 if kappa_total > best_kappa:
                     best_kappa = kappa_total
                     best_set   = subset
-
             except Exception as e:
                 print(f"[Trial {i}] ERROR: {e}")
-
             f.flush()
             time.sleep(2)
 
-    print(f"\n✨ Mejor trial según Kappa total: κ={best_kappa:.3f} con {len(best_set)} bandas:\n{best_set}")
+    print(f"\n Mejor trial según Kappa total: κ={best_kappa:.3f} con {len(best_set)} bandas:\n{best_set}")
     return best_set
-# --------------------------------------------------------------
-# 6. CÁLCULO DE ÁREAS
-# --------------------------------------------------------------
-
-# 8. MAIN
 
 def main():
-    out_dir = r"C:\Users\Natascha\Desktop\Tesis\pantallazos"
+    out_dir = r"C:\Users\dir"
     os.makedirs(out_dir, exist_ok=True)
 
     # 1) Cargar y etiquetar polígonos
@@ -444,8 +352,6 @@ def main():
               .merge(fc2017)
               .filter(ee.Filter.gt("etiqueta", 0))
     )
-    # 2) Lanza el random search y guarda resultados
-    out_dir = r"C:\Users\Natascha\Desktop\Tesis\python"
     csv_path = os.path.join(out_dir, "random_search_results.csv")
     best_bands = train_rf_random_search(
         polygons,
