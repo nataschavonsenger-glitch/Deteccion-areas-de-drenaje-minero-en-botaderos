@@ -75,8 +75,6 @@ def get_composite(img_id: str, buffer_days: int = 3, maxCloud: int = 30, roi: ee
     return col.median().set('system:time_start', date.millis())
 
 def compute_metrics(matrix, retries=5, wait=20):
-
-    # Creamos un diccionario con las dos métricas
     metrics = ee.Dictionary({
         'acc':   matrix.accuracy().multiply(100),
         'kappa': matrix.kappa()
@@ -85,13 +83,6 @@ def compute_metrics(matrix, retries=5, wait=20):
         try:
             info = safe_get_info(metrics)
             return info['acc'], info['kappa']
-        except EEException as e:
-            if "Too many concurrent aggregations" in str(e):
-                print(f"Warning: intento {i+1} fallido (429). Reintentando en {wait}s…")
-                time.sleep(wait)
-            else:
-                raise
-    raise RuntimeError("No se pudieron calcular métricas tras varios reintentos.")
 
 def _add_indices(img: ee.Image) -> ee.Image:
     # Bandas base
@@ -167,14 +158,12 @@ def _add_indices(img: ee.Image) -> ee.Image:
                 g.select(f'{name}_diss').rename    (f'GLCM_{name}_dissimilarity_{w}')
             ]
         return stats
-
     b5_u = nir.multiply(100).toUint8()
     b6_u = swir1.multiply(100).toUint8()
     b7_u = swir2.multiply(100).toUint8()
     glcm_SR_B5 = glcm_stats(b5_u, 'SR_B5')
     glcm_SR_B6 = glcm_stats(b6_u, 'SR_B6')
     glcm_SR_B7 = glcm_stats(b7_u, 'SR_B7')
-
     open3  = swir1.focal_min(3, 'circle', 'pixels').focal_max(3, 'circle', 'pixels').rename('Open_3')
     close3 = swir1.focal_max(3, 'circle', 'pixels').focal_min(3, 'circle', 'pixels').rename('Close_3')
     gran7  = swir1.focal_max(7, 'circle', 'pixels').subtract(swir1.focal_min(7, 'circle', 'pixels')).rename('Granulo_7')
@@ -197,7 +186,6 @@ def _add_indices(img: ee.Image) -> ee.Image:
         ndvi_std, bsi_std, ndwi_std, ndbi_std,
         evi_std, mndwi_std, nbr_std
     ]
-
     return img.addBands(all_bands)
 
 def segment_snic(img: ee.Image, size=20, compact=1.5):
@@ -205,7 +193,6 @@ def segment_snic(img: ee.Image, size=20, compact=1.5):
     snicImg = ee.Algorithms.Image.Segmentation.SNIC(
         img.select(['SR_B2','SR_B3','SR_B4','SR_B5','SR_B6','SR_B7','ST_B10']),
         size, compact, 8, 128, seeds)
-    
     return snicImg.select('clusters').rename('label')
 
 def segment_stats(img: ee.Image, labels: ee.Image, bands: List[str]) -> ee.Image:
@@ -214,14 +201,13 @@ def segment_stats(img: ee.Image, labels: ee.Image, bands: List[str]) -> ee.Image
         reducer   = ee.Reducer.mean(),
         labelBand = 'label'                    
     )
-
+    
 def object_classify(img, clf, bands):
     label = segment_snic(img)
     stats = segment_stats(img, label, bands)
     return stats.classify(clf).rename('classification')
 
 def mask_water(img: ee.Image, thr: float = 0.1) -> ee.Image:
-    """Máscara simple de agua usando NDWI."""
     return img.select('NDWI').gte(thr)
 
 def hierarchical_classify(
@@ -258,12 +244,10 @@ def train_rf_objects(polygons: ee.FeatureCollection, img_ids: List[str], scale=3
             props      = ['etiqueta'],
             scale      = scale
         ).randomColumn('rnd', RF_PARAMS['seed'])
-
         for c in classes:
             cls_fc = all_fc.filter(ee.Filter.eq('etiqueta', c)) \
                            .limit(per_class, 'rnd')
             samples = samples.merge(cls_fc)
-
     samples = samples.randomColumn('rnd', RF_PARAMS['seed'])
     train = samples.filter(ee.Filter.lt('rnd', SAMPLE_PARAMS['split']))
     test  = samples.filter(ee.Filter.gte('rnd', SAMPLE_PARAMS['split'])).limit(SAMPLE_PARAMS['max_test'])
@@ -309,7 +293,6 @@ def safe_get_info(ee_object, retries=6, wait=5):
         except EEException as e:
             msg = str(e)
             if "429" in msg or "Too many concurrent aggregations" in msg:
-                print(f" getInfo() intento {i+1}/{retries} fallido (429). Reintentando en {wait}s…")
                 time.sleep(wait)
                 wait *= 2
             else:
@@ -317,11 +300,8 @@ def safe_get_info(ee_object, retries=6, wait=5):
     raise RuntimeError("safe_get_info: agotados los reintentos")   
 
 def hybrid_classify(img, clf, bands, water_thr=0.1):
-    # 1) Detecta agua
     water_mask = mask_water(img, water_thr)
-    water_cls  = water_mask.multiply(4).rename('classification')   # 4=agua
-
-    # 2) Clasifica el resto por objeto
+    water_cls  = water_mask.multiply(4).rename('classification') 
     non_water = img.updateMask(water_mask.Not())
     obj_cls   = object_classify(non_water, clf, bands).rename('classification')
     return obj_cls.unmask(water_cls)
@@ -333,22 +313,17 @@ def print_histogram(polygons):
     
 def merge_polys(polys: ee.FeatureCollection,
                 buf_m: float = 200) -> ee.FeatureCollection:
-    # 1) buffer positivo
     buf = polys.map(lambda f: f.buffer(buf_m))
-
-    # 2) disolver por clase
     classes = buf.aggregate_array('class').distinct()
 
     def dissolve_and_split(c):
         fc   = buf.filter(ee.Filter.eq('class', c))
         geom = fc.union(maxError=buf_m).geometry()          
         parts = ee.List(geom.geometries())                 
-        # convierte cada parte en Feature independiente
         return ee.FeatureCollection(parts.map(
             lambda g: ee.Feature(ee.Geometry(g), {'class': c})))
     dissolved = classes.map(dissolve_and_split)             
     merged = ee.FeatureCollection(dissolved).flatten()     
-    # 3) buffer negativo para recuperar contorno aproximado
     return merged.map(lambda f: f.buffer(-buf_m))
    
 def classification_to_polygons(class_img: ee.Image, roi: ee.Geometry, scale: int = 30):
@@ -381,7 +356,6 @@ def export_png(
         "transparent": True
     })
     outfile  = os.path.join(out_dir, f"{img_id}_{prefix}.png")
-    
     for attempt in range(1, max_http_retries+1):
         try:
             with requests.get(url, stream=True, timeout=(30, 300)) as r:
@@ -390,7 +364,6 @@ def export_png(
                     for chunk in r.iter_content(8192):
                         if chunk:
                             f.write(chunk)
-            print(f"PNG saved via HTTP: {outfile}")
             return
         except RequestException as e:
             print(f"HTTP attempt {attempt}/{max_http_retries} failed: {e}")
@@ -429,11 +402,8 @@ def classify_train_ids(
     os.makedirs(export_dir, exist_ok=True)
 
     for tid in train_ids:
-        print(f"\n=== Clasificando (train) {tid} ===")
-        # Compuesto centrado en la fecha de la escena
         img = get_composite(tid, roi=roi)
         cls = hybrid_classify(img, clf, bands, water_thr=water_thr).rename('classification')
-
         task = ee.batch.Export.image.toDrive(
             image         = cls,
             description   = f'{prefix}_{tid}',
@@ -448,7 +418,6 @@ def classify_train_ids(
         merged_polys = merge_polys(raw_polys, buf_m=200)
         asset_path   = f'projects/ee-proyecto/{prefix}_{tid}'
         export_asset(merged_polys, asset_id=asset_path, desc=f'{prefix}_{tid}_asset')
-    
         rgb = img.visualize(**_VIS_RGB).clip(roi)
         vis = cls.visualize(min=1, max=5, palette=_PALETTE, opacity=0.4).clip(roi)
         export_png(rgb.blend(vis), tid, roi, export_dir, prefix='cls')
@@ -487,12 +456,10 @@ def classify_collection(
             maxPixels   = max_pixels
         )
         task.start()
-
         raw_polys   = classification_to_polygons(img.select('classification'), roi)
         merged_polys = merge_polys(raw_polys, buf_m=200)
         asset_path = (f'projects/proyecto2/' f'{prefix}_{img_id}_{date}')
         export_asset(merged_polys, asset_id = asset_path,desc = f'{prefix}_{img_id}_{date}_asset')
-        
         rgb = img.visualize(**_VIS_RGB).clip(roi)
         vis = img.select('classification').visualize(
             min=1, max=5, palette=_PALETTE, opacity=0.4).clip(roi)
@@ -544,4 +511,5 @@ if __name__ == '__main__':
     ee.Initialize()
 
     main()
+
 
