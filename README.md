@@ -26,8 +26,16 @@ Codigo en Python + Google Earth Engine: construye un stack grande de features (�
 Implementa SAM (Spectral Angle Mapper) en GEE con un catálogo de minerales/firma espectral, extraido de la USGS. Clasifica escenas de Sentinel-2, aplica umbrales de confianza, remapea a clases de litología (p. ej., Skarn/Intrusiva/Caliza/Indeterminada), hace sampling en la malla/puntos (`numero`, `X`, `Y`) y exporta CSV consolidado con `fecha_img`, `litologia`, `mineral'.
 
 - `Merge_CSV-checkpoint.ipynb`  
-  Notebook de integración final: une los CSV de bandas (S2/L8/L9) en un solo dataset normalizando `punto_id` y `fecha`, luego integra el CSV de cambios Sentinel-1, agrega clima (Excel ERA5-LAND), une coordenadas + elevación (DEM) y finalmente incorpora litología/mineral (SAM). 
-
+  Notebook de integración final: une los CSV de bandas (S2/L8/L9) en un solo dataset normalizando `punto_id` y `fecha`, luego integra el CSV de cambios Sentinel-1, agrega clima (Excel ERA5-LAND), une coordenadas + elevación (DEM) y finalmente incorpora litología/mineral (SAM).
+  
+  ### CSV
+- **`resultados_bandas.csv`**
+  Archivo de registro de experimentos de selección de bandas.  
+  Cada fila corresponde a una iteración donde se evalúa un subconjunto de bandas para entrenar y validar el clasificador.  
+  Se usa para:
+  - Comparar combinaciones de bandas.
+  - Identificar la mejor configuración (por accuracy** y kappa),
+  - Dejar trazabilidad/reproducibilidad de qué variables se probaron.
 
 ## Requisitos
 - Python 3.9+ 
