@@ -18,8 +18,8 @@ Codigo en Python + Google Earth Engine: construye un stack grande de features (�
 - **`Extraccion_de_datos-checkpoint.ipynb`**  
   Notebook para extracción de variables por punto y por fecha desde varias fuentes:
   - **Cambios Sentinel-1**: calcula métricas de cambio multitemporal por punto de malla y exporta un CSV resumen (y mapas HTML de apoyo).
-  - **Bandas/índices por sensor**: extrae valores para Landsat 8/9 y **Sentinel-2 por `punto_id` y exporta un CSV por sensor.
-  - **DEM**: muestrea elevación por punto desde **NASADEM** y **Copernicus GLO30**, exportando CSVs.
+  - **Bandas/índices por sensor**: extrae valores para Landsat 8/9 y Sentinel-2 por `punto_id` y exporta un CSV por sensor.
+  - **DEM**: muestrea elevación por punto desde NASADEM y Copernicus GLO30, exportando CSVs.
   - **Clima**: extrae variables diarias desde **ERA5-LAND** y los guarda en un excel.
 
 - **'Datos_Litologia-checkpoint.ipynb'**
@@ -34,7 +34,7 @@ Implementa SAM (Spectral Angle Mapper) en GEE con un catálogo de minerales/firm
   Cada fila corresponde a una iteración donde se evalúa un subconjunto de bandas para entrenar y validar el clasificador.  
   Se usa para:
   - Comparar combinaciones de bandas.
-  - Identificar la mejor configuración (por accuracy** y kappa),
+  - Identificar la mejor configuración (por accuracy y kappa),
   - Dejar trazabilidad/reproducibilidad de qué variables se probaron.
 
 ## Requisitos
