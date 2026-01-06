@@ -26,7 +26,7 @@ Implementa SAM (Spectral Angle Mapper) en GEE con un catálogo de minerales/firm
 - `Merge_CSV.ipynb`  
   Notebook de integración final: une los CSV de bandas (S2/L8/L9) en un solo dataset normalizando `punto_id` y `fecha`, luego integra el CSV de cambios Sentinel-1, agrega clima (Excel ERA5-LAND), une coordenadas + elevación (DEM) y finalmente incorpora litología/mineral (SAM).
   
-- `Zona_de_interes.ipynb`
+- **`Zona_de_interes.ipynb`**
  Notebook para identificar y mapear zonas de interés en el botadero a partir del dataset final. Una zona se considera de interés cuando, un kernel, (i) predomina litología reactiva (Intrusivo/Skarn) frente a Caliza (≈≥60% del total reactivo+caliza), (ii) en una fecha cumple Fe³⁺ alto (Ferric_minor_S2 ≥ P80) y humedad baja (NMDI_S2 ≤ P75), y (iii) respecto a la fecha anterior muestra un cambio compatible con oxidación: Fe²⁺ disminuye y Fe³⁺ aumenta. El codigo calcula la recurrencia temporal de estas detecciones y genera mapas por fecha.
   
   ### CSV
